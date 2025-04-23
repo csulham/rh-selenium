@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# debug
+
+debug_*
+
 # Distribution / packaging
 .Python
 build/
@@ -14,7 +18,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/
 lib64/
 parts/
 sdist/
@@ -35,6 +39,10 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Logs
+logs/
+*_logs_automationqa.txt
 
 # Unit test / coverage reports
 htmlcov/
@@ -166,9 +174,6 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
-
-# Ruff stuff:
-.ruff_cache/
 
 # PyPI configuration file
 .pypirc

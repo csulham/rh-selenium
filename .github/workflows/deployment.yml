@@ -1,0 +1,90 @@
+name: CD Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-to-cloud-run:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      # Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Docker
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Auth to GCP
+        env:
+          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GITHUBCICD_RH_MARKETING_ANALYTICS_GA4 }}
+        run: |
+          # Save the service account key to a temporary file
+          echo "$GCP_SERVICE_ACCOUNT_KEY" > gcp-key.json
+
+          # Authenticate using the service account
+          gcloud auth activate-service-account --key-file=gcp-key.json
+
+          # Verify authentication
+          gcloud auth list
+
+          # Configure Docker authentication for Artifact Registry
+          gcloud auth configure-docker us-central1-docker.pkg.dev
+          
+      - name: Test access to a GCP resource
+        run: |
+          # List GCP projects to confirm authentication works
+          gcloud projects list
+
+      - name: Build Docker image and push image to Artifact Registry
+        env:
+          PROJECT_ID: rh-marketing-analytics-ga4
+          REGION: us-central1
+          REPO_NAME: qa-selenium-test
+          IMAGE_NAME: docker-img-qa-selenium-test
+        run: |
+          # Define full image path
+          IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:latest"
+
+          # Build Docker image
+          docker build -t $IMAGE_PATH .
+
+          # Push image to Artifact Registry
+          docker push $IMAGE_PATH
+
+      # Update Cloud Run job to use the latest image
+      - name: Deploy latest image to Cloud Run Job
+        env:
+          PROJECT_ID: rh-marketing-analytics-ga4
+          REGION: us-central1
+          JOB_NAME: docker-img-qa-selenium-test
+          IMAGE_NAME: docker-img-qa-selenium-test
+          REPO_NAME: qa-selenium-test
+        run: |
+          # Define full image path
+          IMAGE_PATH="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME:latest"
+
+          echo "Updating Cloud Run job $JOB_NAME with latest image..."
+
+          # Update Cloud Run job to use latest image
+          gcloud run jobs update $JOB_NAME \
+            --image=$IMAGE_PATH \
+            --region=$REGION \
+            --project=$PROJECT_ID
+
+          echo "Cloud Run job $JOB_NAME updated successfully."
+
+      # # Optionally trigger the job immediately
+      # - name: Run the Cloud Run Job
+      #   env:
+      #     PROJECT_ID: rh-marketing-analytics-ga4
+      #     REGION: us-central1
+      #     JOB_NAME: docker-img-qa-selenium-test
+      #   run: |
+      #     echo "Running Cloud Run job $JOB_NAME..."
+      #     gcloud run jobs execute $JOB_NAME --region=$REGION --project=$PROJECT_ID
+      #     echo "Cloud Run job $JOB_NAME execution triggered."
