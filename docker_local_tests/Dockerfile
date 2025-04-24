@@ -26,6 +26,7 @@ RUN apt-get update && \
     firefox-esr \
     libgtk-3-0 \
     libdbus-glib-1-2 \
+    libgbm1 \
     libxt6 && \
     rm -rf /var/lib/apt/lists/*
 
