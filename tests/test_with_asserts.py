@@ -82,7 +82,6 @@ def setup_driver(setup_browsermob):
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--user-data-dir=C:/Temp/ChromeUserData")
     options.accept_insecure_certs = True
     options.binary_location = CHROME_BINARY_PATH
 
