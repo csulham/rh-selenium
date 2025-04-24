@@ -1,3 +1,4 @@
+from os import wait
 import pytest
 import psutil
 import datetime
@@ -24,12 +25,12 @@ test_suite = 'MSJO US-en'
 test_suite_version = '1.0.0'
 test_case_name = 'MSJO auth temp'
 test_case_version = '1.0.0'
-test_id = 1
+test_id = 2
 run_id = uuid.uuid4()
 url_to_be_tested = "https://aem-qs4.np.roberthalf.com/us/en/c/hire?internal_user=qaselenium&urm_campaign=qaTest"
 metadata_string = f'{test_suite}|{test_suite_version}|{test_case_name}|{test_case_version}'
 
-test_name = "test_hire_talent_form_cms"
+test_name = "test_form_ga4"
 start_timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
 logs_file_name = f"{start_timestamp}_logs_automationqa.txt"
 test_finish_timestamp = ""
@@ -103,19 +104,22 @@ def log_assert(title, condition, message):
     try:
         assert condition, message
         log_message = f"{metadata_string}|' {title} '|{url_to_be_tested}|success"
-        logging.info(log_message)
-
-        with open(logs_file_name, "a") as log_file:
-            log_file.write(f"{start_timestamp}\t{test_name}\tsuccess\t{log_message}\n")
+        log_info(log_message)
 
     except AssertionError as e:
         failure_reason = f"{title} failed: {str(e)}"
         log_message = f"{metadata_string}|' {title} '|{url_to_be_tested}|FAILED: {failure_reason}"
-        logging.error(log_message)
+        log_error(log_message)
 
-        with open(logs_file_name, "a") as log_file:
-            log_file.write(f"{start_timestamp}\t{test_name}\tfail\t{log_message}\n")
+def log_info(message):
+    logging.info(message)
+    with open(logs_file_name, "a") as log_file:
+        log_file.write(f"{start_timestamp}\t{test_name}\tinfo\t{message}\n")
 
+def log_error(message):
+    logging.error(message)
+    with open(logs_file_name, "a") as log_file:
+        log_file.write(f"{start_timestamp}\t{test_name}\terror\t{message}\n")
 
 @pytest.mark.parametrize("test_url", [url_to_be_tested])
 def test_hire_now_form(setup_driver, test_url):
@@ -126,16 +130,69 @@ def test_hire_now_form(setup_driver, test_url):
         logging.info(f"{metadata_string}|'Navigate to URL'|{test_url}|Navigating to {test_url}")
         driver.get(test_url)
 
+        #Wait for the page to load
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "rhcl-dropdown"))
         )
-        logging.info(f"{metadata_string}|'Form Loaded'|{test_url}|Form elements detected")
+        log_info(f"{metadata_string}|'Form Loaded'|{test_url}|Form elements detected")
 
+        #dismiss cookie banner if present
+        try:
+            wait.until(EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))).click()
+            log_info("Cookie banner dismissed")
+        except:
+            log_info("No cookie banner")
+
+
+
+        # Test the title and presence of specific text
         log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'")
-        log_assert("Page contains 'THIS TEST MUST FAIL' text", "THIS TEST MUST FAIL" in driver.page_source, "Page does not contain 'THIS TEST MUST FAIL' text")
+        
+        # Fill out the form fields
+        def fill_field(selector, value, label):
+            try:
+                log_info(f"Typing {label}...")
+                js_script = """
+                    const el = document.querySelector(arguments[0]);
+                    if (!el || !el.interactionRef) throw new Error(arguments[2] + ' interactionRef not found');
+                    const input = el.interactionRef;
+                    input.scrollIntoView();
+                    input.focus();
+                    input.value = arguments[1];
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                """
+                driver.execute_script(js_script, selector, value, label)
+                
+                # Assert that the field was filled with the correct value
+                check_value_script = "return document.querySelector(arguments[0]).interactionRef.value;"
+                filled_value = driver.execute_script(check_value_script, selector)
+                log_assert(f"{label} field filled correctly", filled_value == value, f"Expected {value}, but got {filled_value}")
+            except Exception as e:
+                log_error(f"Error filling field {label}: {e}")
 
-        element = driver.find_element(By.ID, "container-9ad031068e")
-        log_assert("Element with ID 'container-9ad031068e' on page", element is not None, "Element with ID 'container-9ad031068e' not found")
+        fill_field("rhcl-typeahead[name='positionTitle']", "Quality Assurance Engineer", "Job Title")
+        fill_field("rhcl-text-field[name='postalCode']", "99502", "Zip Code")
+        fill_field("rhcl-textarea[name='additionalInfo']", "Test message", "Comments")
+        fill_field("rhcl-text-field[name='firstName']", "Jes", "First Name")
+        fill_field("rhcl-text-field[name='lastName']", "Carney", "Last Name")
+        fill_field("rhcl-text-field[name='phoneNumber']", "1234567890", "Phone Number")
+        fill_field("rhcl-text-field[name='email']", "jes@example.com", "Email")
+        fill_field("rhcl-text-field[name='companyName']", "Robert Half", "Company Name")
+        fill_field("rhcl-text-field[name='customerTitle']", "Director", "Customer Title")
+
+        # Dropdown and checkbox
+        try:
+            driver.execute_script("""
+                const el = document.querySelector("rhcl-dropdown[name='employmentType']");
+                el.interactionRef.value = "Contract Talent";
+                el.interactionRef.dispatchEvent(new Event('change', { bubbles: true }));
+            """)
+            # Assert that the field was filled with the correct value
+            filled_value = driver.execute_script("""return document.querySelector("rhcl-dropdown[name='employmentType']").interactionRef.value;""")
+            log_assert("Employment Type dropdown field filled correctly", filled_value == "Contract Talent", f"Expected 'Contract Talent', but got {filled_value}")
+        except Exception as e:
+            log_error(f"Could not set Employment Type dropdown: {e}")
 
     finally:
         test_finish_timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')

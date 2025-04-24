@@ -1,0 +1,174 @@
+import time
+import json
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+URL = "https://aem-qs4.np.roberthalf.com/us/en/c/hire?internal_user=qaselenium&urm_campaign=qaTest"
+CHROMEDRIVER_PATH = "/usr/local/bin/chromedriver"
+
+def get_data_layer(driver):
+    return driver.execute_script("return window.dataLayer || []")
+
+def extract_user_id_ga(data_layer):
+    for entry in data_layer:
+        if isinstance(entry, list) and len(entry) >= 2:
+            payload = entry[1]
+            if isinstance(payload, dict):
+                props = payload.get("user_properties", {})
+                if isinstance(props, dict):
+                    if "user_id_ga" in props and props["user_id_ga"]:
+                        return props["user_id_ga"]
+    return None
+
+def validate_page_view_event(data_layer):
+    print("\n[INFO] Validating GA4 page_view event...")
+    for entry in data_layer:
+        if isinstance(entry, list) and len(entry) >= 3:
+            if entry[0] == "event" and entry[1] == "page_view":
+                data = entry[2]
+                expected = {
+                    "page_topic": "lead form page",
+                    "page_section": "performance landing pages",
+                    "page_user_type": "client",
+                    "page_zone": "7i2dtn"
+                }
+                passed = True
+                for key, val in expected.items():
+                    actual = data.get(key)
+                    if actual != val:
+                        print(f"[FAIL] {key}: '{actual}' (expected '{val}')")
+                        passed = False
+                    else:
+                        print(f"[PASS] {key}: '{actual}'")
+
+                user_id_ga = data.get("user_id_ga") or extract_user_id_ga(data_layer)
+                user_id_tealium = data.get("user_id_tealium")
+
+                if user_id_ga:
+                    print(f"[PASS] user_id_ga: {user_id_ga}")
+                else:
+                    print("[FAIL] user_id_ga: missing or empty")
+                    passed = False
+
+                if user_id_tealium:
+                    print(f"[PASS] user_id_tealium: {user_id_tealium}")
+                else:
+                    print("[FAIL] user_id_tealium: missing or empty")
+                    passed = False
+
+                return passed
+    print("[FAIL] GA4 page_view event not found")
+    return False
+
+def run_test():
+    options = Options()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=options)
+    wait = WebDriverWait(driver, 10)
+
+    try:
+        driver.get(URL)
+        time.sleep(3)
+
+        try:
+            wait.until(EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))).click()
+            print("[INFO] Cookie banner dismissed")
+        except:
+            print("[INFO] No cookie banner")
+
+        def fill_field(selector, value, label):
+            try:
+                print(f"[INFO] Typing {label}...")
+                driver.execute_script(f"""
+                    const el = document.querySelector("{selector}");
+                    if (!el || !el.interactionRef) throw new Error("{label} interactionRef not found");
+                    const input = el.interactionRef;
+                    input.scrollIntoView();
+                    input.focus();
+                    input.value = "{value}";
+                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                """)
+                print(f"[PASS] {label} filled")
+            except Exception as e:
+                print(f"[FAIL] {label}: {e}")
+
+        fill_field("rhcl-typeahead[name='positionTitle']", "Quality Assurance Engineer", "Job Title")
+        fill_field("rhcl-text-field[name='postalCode']", "99502", "Zip Code")
+        fill_field("rhcl-textarea[name='additionalInfo']", "Test message", "Comments")
+        fill_field("rhcl-text-field[name='firstName']", "Jes", "First Name")
+        fill_field("rhcl-text-field[name='lastName']", "Carney", "Last Name")
+        fill_field("rhcl-text-field[name='phoneNumber']", "1234567890", "Phone Number")
+        fill_field("rhcl-text-field[name='email']", "jes@example.com", "Email")
+        fill_field("rhcl-text-field[name='companyName']", "Robert Half", "Company Name")
+        fill_field("rhcl-text-field[name='customerTitle']", "Director", "Customer Title")
+
+        try:
+            driver.execute_script("""
+                const el = document.querySelector("rhcl-dropdown[name='employmentType']");
+                if (!el || !el.interactionRef) throw new Error("Employment Type dropdown not found");
+                el.interactionRef.value = "temp";
+                el.interactionRef.dispatchEvent(new Event('change', { bubbles: true }));
+            """)
+            print("[PASS] Employment Type dropdown set")
+        except Exception as e:
+            print(f"[FAIL] Employment Type: {e}")
+
+        try:
+            driver.execute_script("""
+                const checkbox = document.querySelector("rhcl-checkbox[name='remoteEligible']");
+                if (!checkbox || !checkbox.interactionRef) throw new Error("Remote checkbox not found");
+                checkbox.interactionRef.click();
+            """)
+            print("[PASS] Remote checkbox checked")
+        except Exception as e:
+            print(f"[FAIL] Remote checkbox: {e}")
+
+        try:
+            driver.execute_script("""
+                const button = document.querySelector("rhcl-button[component-title='Submit']");
+                if (!button || !button.interactionRef) throw new Error("Submit button not found");
+                button.interactionRef.click();
+            """)
+            print("[PASS] Form submitted")
+        except Exception as e:
+            print(f"[FAIL] Form submission: {e}")
+
+        # Wait for GA4 page_view event
+        time.sleep(40)
+        data_layer = get_data_layer(driver)
+        page_view_passed = validate_page_view_event(data_layer)
+
+        # Try clicking phone number via MouseEvent
+        try:
+            print("[INFO] Attempting to click phone number via MouseEvent...")
+            driver.execute_script("""
+                const phoneLink = document.querySelector("a[href^='tel:']");
+                if (!phoneLink) throw new Error("Phone link not found");
+                phoneLink.scrollIntoView();
+                phoneLink.dispatchEvent(new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                }));
+            """)
+            print("[PASS] Phone number link clicked")
+            phone_click_success = True
+        except Exception as e:
+            print(f"[FAIL] Phone number not clickable: {e}")
+            phone_click_success = False
+
+        if page_view_passed and phone_click_success:
+            print("\n[PASS] Test Passed: GA4 page_view event and phone link click validated.")
+        else:
+            print("\n[FAIL] Test Failed: One or more validations failed.")
+
+    finally:
+        driver.quit()
+
+if __name__ == "__main__":
+    run_test()
