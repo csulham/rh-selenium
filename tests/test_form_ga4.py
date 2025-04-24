@@ -83,6 +83,15 @@ def setup_driver(setup_browsermob):
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    
+    # Add these options to better support cookies and tracking
+    options.add_argument("--enable-javascript")
+    options.add_argument("--enable-cookies")
+    options.add_argument("--disable-blink-features=AutomationControlled")  # Prevents detection as automated browser
+    
+    # Set a specific user agent
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36")
+    
     options.accept_insecure_certs = True
     options.binary_location = CHROME_BINARY_PATH
 
@@ -103,12 +112,12 @@ def setup_driver(setup_browsermob):
 def log_assert(title, condition, message):
     try:
         assert condition, message
-        log_message = f"{metadata_string}|' {title} '|{url_to_be_tested}|success"
+        log_message = f"{metadata_string}|' {title} '| success"
         log_info(log_message)
 
     except AssertionError as e:
         failure_reason = f"{title} failed: {str(e)}"
-        log_message = f"{metadata_string}|' {title} '|{url_to_be_tested}|FAILED: {failure_reason}"
+        log_message = f"{metadata_string}|' {title} '| FAILED: {failure_reason}"
         log_error(log_message)
 
 def log_info(message):
@@ -120,6 +129,50 @@ def log_error(message):
     logging.error(message)
     with open(logs_file_name, "a") as log_file:
         log_file.write(f"{start_timestamp}\t{test_name}\terror\t{message}\n")
+
+def wait_for_data_layer(driver, timeout=10):
+    # Wait for dataLayer to be present, contain events, and have user IDs.
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        data_layer = driver.execute_script("return window.dataLayer || []")
+        if data_layer and len(data_layer) > 0:
+            return data_layer
+        time.sleep(0.5)
+    raise TimeoutError("Timed out waiting for dataLayer to be populated with user IDs")
+
+def get_data_layer(driver):
+    try:
+        return wait_for_data_layer(driver)
+    except TimeoutError as e:
+        log_error(f"DataLayer not available: {str(e)}")
+        return []
+
+def validate_page_view_event(data_layer):
+    log_info("Validating GA4 page_view event...")
+    if not data_layer:
+        assert False, "DataLayer is empty"
+        
+    for entry in data_layer:
+        if isinstance(entry, list) and entry[0] == "event" and entry[1] == "page_view":
+            data = entry[2]
+            expected = {
+                "page_topic": "lead form page",
+                "page_section": "performance landing pages",
+                "page_user_type": "client",
+                "page_zone": "7i2dtn"
+            }
+            passed = True
+            for k, v in expected.items():
+                log_assert(f"Checking dataLayer for {k}", k in data, f"Key '{k}' not found in dataLayer")
+                log_assert(f"Checking dataLayer for {k}=={v}", data[k] == v, f"Value for '{k}' does not match expected value. Expected: {v}, Found: {data[k]}")
+
+            # Check user IDs
+            log_assert("Checking user_id_ga", data.get('user_id_ga') is not None, "user_id_ga not found in dataLayer.");
+            log_assert("Checking user_id_tealium", data.get('user_id_tealium') is not None, "user_id_tealium not found in dataLayer.");
+            
+            return passed
+    
+    assert False, "GA4 page_view event not found in dataLayer"
 
 @pytest.mark.parametrize("test_url", [url_to_be_tested])
 def test_hire_now_form(setup_driver, test_url):
@@ -143,11 +196,12 @@ def test_hire_now_form(setup_driver, test_url):
         except:
             log_info("No cookie banner")
 
-
-
         # Test the title and presence of specific text
         log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'")
         
+        data_layer = get_data_layer(driver)
+        validate_page_view_event(data_layer), "GA4 page_view event validation failed"
+
         # Fill out the form fields
         def fill_field(selector, value, label):
             try:
