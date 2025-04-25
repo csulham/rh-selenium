@@ -11,7 +11,7 @@ class TestFormGA4(BaseTest):
     
     def setup_method(self, method):
         super().setup_method(method)
-        self.test_name = "test_form_ga4"
+        self.test_name = "test_ga4_page_view"
         self.test_id = 2
         
         # Metadata for domo
@@ -71,53 +71,13 @@ def test_hire_now_form(setup_driver, test_url):
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "rhcl-dropdown"))
         )
-
         test_instance.log_info(f"{test_instance.metadata_string}|'Form Loaded'|{test_url}|Form elements detected")
-
-
-        #dismiss cookie banner if present
-        try:
-            WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
-            ).click()
-            test_instance.log_info("Cookie banner dismissed")
-        except:
-            test_instance.log_info("No cookie banner")
 
         # Test the title and presence of specific text
         test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'", test_url)
         
         data_layer = test_instance.get_data_layer(driver)
         test_instance.validate_page_view_event(data_layer)
-
-        # Fill out the form fields
-        form_fields = [
-            ("rhcl-typeahead[name='positionTitle']", "Quality Assurance Engineer", "Job Title"),
-            ("rhcl-text-field[name='postalCode']", "99502", "Zip Code"),
-            ("rhcl-textarea[name='additionalInfo']", "Test message", "Comments"),
-            ("rhcl-text-field[name='firstName']", "Jes", "First Name"),
-            ("rhcl-text-field[name='lastName']", "Carney", "Last Name"),
-            ("rhcl-text-field[name='phoneNumber']", "1234567890", "Phone Number"),
-            ("rhcl-text-field[name='email']", "jes@example.com", "Email"),
-            ("rhcl-text-field[name='companyName']", "Robert Half", "Company Name"),
-            ("rhcl-text-field[name='customerTitle']", "Director", "Customer Title")
-        ]
-
-        for selector, value, label in form_fields:
-            test_instance.fill_field(driver, selector, value, label)
-
-        # Dropdown and checkbox
-        try:
-            driver.execute_script("""
-                const el = document.querySelector("rhcl-dropdown[name='employmentType']");
-                el.interactionRef.value = "Contract Talent";
-                el.interactionRef.dispatchEvent(new Event('change', { bubbles: true }));
-            """)
-            # Assert that the field was filled with the correct value
-            filled_value = driver.execute_script("""return document.querySelector("rhcl-dropdown[name='employmentType']").interactionRef.value;""")
-            test_instance.log_assert("Employment Type dropdown field filled correctly", filled_value == "Contract Talent", f"Expected 'Contract Talent', but got {filled_value}", test_url)
-        except Exception as e:
-            test_instance.log_error(f"Could not set Employment Type dropdown: {e}")
 
     except AssertionError as e:
         test_instance.test_result = "fail"
