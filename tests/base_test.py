@@ -10,6 +10,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 from google.cloud import storage
 import time
 
@@ -151,3 +152,26 @@ class BaseTest:
             self.log_assert(f"{label} field filled correctly", filled_value == value, f"Expected {value}, but got {filled_value}")
         except Exception as e:
             self.log_error(f"Error filling field {label}: {e}")
+
+    def load_dataLayer_and_dismiss_cookie(self, driver):
+        """Wait for page load, refresh for dataLayer, and dismiss cookie banner if present."""
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "rhcl-dropdown"))
+        )
+  
+        #refresh the page to ensure all dataLayer events are loaded. user_id_ga is set on second visit.
+        driver.refresh()
+        
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "rhcl-dropdown"))
+        )
+        self.log_info(f"{self.metadata_string}|Form Loaded, form elements detected")
+
+        # Handle OneTrust cookie consent if present
+        try:
+            WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.ID, "onetrust-close-btn-container"))
+            ).click()
+            self.log_info(f"{self.metadata_string}|Cookie banner dismissed")
+        except:
+            self.log_info(f"{self.metadata_string}|No cookie banner detected")
