@@ -58,12 +58,22 @@ def test_hire_now_form(setup_driver, test_url):
 
     try:
         test_instance.log_info(f"{test_instance.metadata_string}|'Navigate to URL'|{test_url}|Navigating to {test_url}")
+        #load the page
         driver.get(test_url)
 
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "rhcl-dropdown"))
         )
+
+        #refresh the page to ensure all dataLayer events are loaded. user_id_ga is set on second visit.
+        driver.refresh()
+        
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "rhcl-dropdown"))
+        )
+
         test_instance.log_info(f"{test_instance.metadata_string}|'Form Loaded'|{test_url}|Form elements detected")
+
 
         #dismiss cookie banner if present
         try:
