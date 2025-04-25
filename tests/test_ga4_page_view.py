@@ -75,7 +75,7 @@ def test_hire_now_form(setup_driver, test_url):
         test_instance.log_info(f"{test_instance.metadata_string}|'Form Loaded'|{test_url}|Form elements detected")
 
         # Test the title and presence of specific text
-        test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'", test_url)
+        test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'")
         
         data_layer = test_instance.get_data_layer(driver)
         test_instance.validate_page_view_event(data_layer)

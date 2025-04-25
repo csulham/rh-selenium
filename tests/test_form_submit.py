@@ -77,7 +77,7 @@ def test_hire_now_form(setup_driver, test_url):
             test_instance.log_info("No cookie banner")
 
         # Test the title and presence of specific text
-        test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'", test_url)
+        test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'")
         
         # Fill out the form fields
         form_fields = [
@@ -104,7 +104,7 @@ def test_hire_now_form(setup_driver, test_url):
             """)
             # Assert that the field was filled with the correct value
             filled_value = driver.execute_script("""return document.querySelector("rhcl-dropdown[name='employmentType']").interactionRef.value;""")
-            test_instance.log_assert("Employment Type dropdown field filled correctly", filled_value == "Contract Talent", f"Expected 'Contract Talent', but got {filled_value}", test_url)
+            test_instance.log_assert("Employment Type dropdown field filled correctly", filled_value == "Contract Talent", f"Expected 'Contract Talent', but got {filled_value}")
         except Exception as e:
             test_instance.log_error(f"Could not set Employment Type dropdown: {e}")
 

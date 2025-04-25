@@ -38,11 +38,11 @@ def test_hire_now_form(setup_driver, test_url):
         )
         test_instance.log_info(f"{test_instance.metadata_string}|'Form Loaded'|{test_url}|Form elements detected")
 
-        test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'", test_url)
-        #test_instance.log_assert("Page contains 'THIS TEST MUST FAIL' text", "THIS TEST MUST FAIL" in driver.page_source, "Page does not contain 'THIS TEST MUST FAIL' text", test_url)
+        test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'")
+        #test_instance.log_assert("Page contains 'THIS TEST MUST FAIL' text", "THIS TEST MUST FAIL" in driver.page_source, "Page does not contain 'THIS TEST MUST FAIL' text")
 
         element = driver.find_element(By.ID, "container-9ad031068e")
-        test_instance.log_assert("Element with ID 'container-9ad031068e' on page", element is not None, "Element with ID 'container-9ad031068e' not found", test_url)
+        test_instance.log_assert("Element with ID 'container-9ad031068e' on page", element is not None, "Element with ID 'container-9ad031068e' not found")
 
     except AssertionError as e:
         test_instance.test_result = "fail"

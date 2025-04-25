@@ -95,18 +95,14 @@ class BaseTest:
         with open(self.logs_file_name, "a") as log_file:
             log_file.write(f"{self.start_timestamp}\t{self.test_name}\terror\t{message}\n")
 
-    def log_assert(self, title, condition, message, url=None):
+    def log_assert(self, title, condition, message):
         try:
             assert condition, message
             log_message = f"{self.metadata_string}|'{title}'|success"
-            if url:
-                log_message += f"|{url}"
             self.log_info(log_message)
         except AssertionError as e:
             failure_reason = f"{title} failed: {str(e)}"
             log_message = f"{self.metadata_string}|'{title}'|FAILED: {failure_reason}"
-            if url:
-                log_message += f"|{url}"
             self.log_error(log_message)
             raise
 
