@@ -23,32 +23,28 @@ class TestFormGA4(BaseTest):
             test_suite, test_suite_version, test_case_name, test_case_version
         )
 
-    def validate_page_view_event(self, data_layer):
-        self.log_info("Validating GA4 page_view event...")
-        if not data_layer:
-            assert False, "DataLayer is empty"
+    def fill_field(self, driver, selector, value, label):
+        try:
+            self.log_info(f"Typing {label}...")
+            js_script = """
+                const el = document.querySelector(arguments[0]);
+                if (!el || !el.interactionRef) throw new Error(arguments[2] + ' interactionRef not found');
+                const input = el.interactionRef;
+                input.scrollIntoView();
+                input.focus();
+                input.value = arguments[1];
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            """
+            driver.execute_script(js_script, selector, value, label)
             
-        for entry in data_layer:
-            if isinstance(entry, list) and entry[0] == "event" and entry[1] == "page_view":
-                data = entry[2]
-                expected = {
-                    "page_topic": "lead form page",
-                    "page_section": "performance landing pages",
-                    "page_user_type": "client",
-                    "page_zone": "7i2dtn"
-                }
-                passed = True
-                for k, v in expected.items():
-                    self.log_assert(f"Checking dataLayer for {k}", k in data, f"Key '{k}' not found in dataLayer")
-                    self.log_assert(f"Checking dataLayer for {k}=={v}", data[k] == v, f"Value for '{k}' does not match expected value. Expected: {v}, Found: {data[k]}")
+            check_value_script = "return document.querySelector(arguments[0]).interactionRef.value;"
+            filled_value = driver.execute_script(check_value_script, selector)
 
-                # Check user IDs
-                self.log_assert("Checking user_id_ga", data.get('user_id_ga') is not None, "user_id_ga not found in dataLayer.")
-                self.log_assert("Checking user_id_tealium", data.get('user_id_tealium') is not None, "user_id_tealium not found in dataLayer.")
-                
-                return passed
+            self.log_assert(f"'{label}' field filled correctly", filled_value == value, f"Expected '{value}', but got '{filled_value}'")
         
-        assert False, "GA4 page_view event not found in dataLayer"
+        except Exception as e:
+            self.log_error(f"Error filling field '{label}': {e}")    
 
 @pytest.mark.parametrize("test_url", [TestFormGA4.URL])
 def test_hire_now_form(setup_driver, test_url):
@@ -58,27 +54,22 @@ def test_hire_now_form(setup_driver, test_url):
 
     try:
         test_instance.log_info(f"{test_instance.metadata_string}|'Navigate to URL'|{test_url}|Navigating to {test_url}")
+        
         #load the page
         driver.get(test_url)
-
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "rhcl-dropdown"))
-        )
-
+        test_instance.load_dataLayer_and_dismiss_cookie(driver)
         test_instance.log_info(f"{test_instance.metadata_string}|'Form Loaded'|{test_url}|Form elements detected")
-
-        #dismiss cookie banner if present
-        try:
-            WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
-            ).click()
-            test_instance.log_info("Cookie banner dismissed")
-        except:
-            test_instance.log_info("No cookie banner")
 
         # Test the title and presence of specific text
         test_instance.log_assert("Page contains 'Hire Now' in title", "Hire Now" in driver.title, "Page title does not contain 'Hire Now'")
         
+        # Navigate the shadow DOM 
+        form_root = driver.find_element(By.TAG_NAME, "rhcl-block-hero-form")
+        test_instance.log_assert("Form element <rhcl-block-hero-form> detected", form_root is not None, "Form root not found")
+        
+        form_shadow_root = form_root.shadow_root
+        test_instance.log_assert("Shadow root detected", form_shadow_root is not None, "Shadow root not found")
+
         # Fill out the form fields
         form_fields = [
             ("rhcl-typeahead[name='positionTitle']", "Quality Assurance Engineer", "Job Title"),
@@ -95,18 +86,68 @@ def test_hire_now_form(setup_driver, test_url):
         for selector, value, label in form_fields:
             test_instance.fill_field(driver, selector, value, label)
 
-        # Dropdown and checkbox
-        try:
-            driver.execute_script("""
-                const el = document.querySelector("rhcl-dropdown[name='employmentType']");
-                el.interactionRef.value = "Contract Talent";
-                el.interactionRef.dispatchEvent(new Event('change', { bubbles: true }));
+        # Dropdown for Position Type        
+        driver.execute_script("""
+            const el = document.querySelector("rhcl-dropdown[name='employmentType']");
+            if (!el || !el.interactionRef) throw new Error("Dropdown interactionRef not found");
+            el.interactionRef.value = "temp";
+            el.interactionRef.dispatchEvent(new Event('change', { bubbles: true }));
+        """)
+        check_value_script = """return document.querySelector("rhcl-dropdown[name='employmentType']").interactionRef.value;"""
+        filled_value = driver.execute_script(check_value_script)
+
+        test_instance.log_assert("Position Type drop down filled correctly?", filled_value == "temp", f"Expected 'temp', but got '{filled_value}'")
+
+        # Remote checkbox
+        driver.execute_script("""
+                const checkbox = document.querySelector("rhcl-checkbox[name='remoteEligible']");
+                if (!checkbox || !checkbox.interactionRef) throw new Error("Remote checkbox not found");
+                checkbox.interactionRef.click();
             """)
-            # Assert that the field was filled with the correct value
-            filled_value = driver.execute_script("""return document.querySelector("rhcl-dropdown[name='employmentType']").interactionRef.value;""")
-            test_instance.log_assert("Employment Type dropdown field filled correctly", filled_value == "Contract Talent", f"Expected 'Contract Talent', but got {filled_value}")
-        except Exception as e:
-            test_instance.log_error(f"Could not set Employment Type dropdown: {e}")
+        check_value_script = """return document.querySelector("rhcl-checkbox[name='remoteEligible']").interactionRef.checked;"""
+        filled_value = driver.execute_script(check_value_script)
+        test_instance.log_assert("Remote checkbox checked?", filled_value, "Checkbox not checked")
+
+        # Submit button
+#        driver.execute_script("""
+#            const btn = document.querySelector("rhcl-button[component-title='Submit']");
+#            btn.scrollIntoView();
+#            btn.dispatchEvent(new MouseEvent('click', {
+#                bubbles: true,
+#                cancelable: true,
+#                view: window
+#            }));
+#        """)
+        #test_instance.log_info(f"{test_instance.metadata_string}|Submit button clicked")
+
+        submit_button = driver.find_element(By.CSS_SELECTOR, "rhcl-button[component-title='Submit']")
+        test_instance.log_assert("Submit button exists?", submit_button is not None, "Submit button not found")
+        
+        # Scroll the submit button into view and focus it before clicking
+        driver.execute_script("""
+            const btn = arguments[0];
+            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            btn.focus();
+        """, submit_button)
+        
+        # Add a small wait to ensure the scroll is complete
+        driver.implicitly_wait(1)
+        submit_button.click()
+
+        # Wait for the form to be submitted and check for success message. It can take a while.
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "rhcl-typography[id='thankYouCopy']"))
+        )
+
+        # Validate the success message
+        success_message = driver.find_element(By.CSS_SELECTOR, "rhcl-typography[id='thankYouCopy']").text
+        test_instance.log_assert("Success message displayed?", "Thank You" in success_message, f"Success message incorrect. Found: {success_message}")
+
+        # Validate GA4 collect request
+        expected_properties = {
+            "ep.event_text": "submit"
+        }
+        test_instance.validate_ga4_collect_event(proxy, "button_click")
 
     except AssertionError as e:
         test_instance.test_result = "fail"

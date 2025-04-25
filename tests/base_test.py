@@ -55,6 +55,7 @@ def setup_driver(setup_browsermob):
     options.add_argument("--enable-javascript")
     options.add_argument("--enable-cookies")
     options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--window-size=1980,1024")
     options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36")
     
     options.accept_insecure_certs = True
@@ -132,27 +133,6 @@ class BaseTest:
             self.log_error(f"DataLayer not available: {str(e)}")
             return []
 
-    def fill_field(self, driver, selector, value, label):
-        try:
-            self.log_info(f"Typing {label}...")
-            js_script = """
-                const el = document.querySelector(arguments[0]);
-                if (!el || !el.interactionRef) throw new Error(arguments[2] + ' interactionRef not found');
-                const input = el.interactionRef;
-                input.scrollIntoView();
-                input.focus();
-                input.value = arguments[1];
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            """
-            driver.execute_script(js_script, selector, value, label)
-            
-            check_value_script = "return document.querySelector(arguments[0]).interactionRef.value;"
-            filled_value = driver.execute_script(check_value_script, selector)
-            self.log_assert(f"{label} field filled correctly", filled_value == value, f"Expected {value}, but got {filled_value}")
-        except Exception as e:
-            self.log_error(f"Error filling field {label}: {e}")
-
     def load_dataLayer_and_dismiss_cookie(self, driver):
         """Wait for page load, refresh for dataLayer, and dismiss cookie banner if present."""
         WebDriverWait(driver, 10).until(
@@ -216,6 +196,14 @@ class BaseTest:
         request_found = False
         actual_request_url = None
         all_requests = []
+                    
+        # Debug logging for all requests
+        #self.log_info("=== All GA requests in HAR log ===")
+        #har_dict = proxy.har
+        #for entry in har_dict['log']['entries']:
+        #    request_url = entry['request']['url']
+        #    if request_url.startswith(target_url):
+        #        self.log_info(f"Request URL: {request_url}")
 
         for attempt in range(max_retries):
             self.log_info(f"Checking HAR logs (Attempt {attempt+1}/{max_retries})...")
@@ -234,5 +222,11 @@ class BaseTest:
             if request_found:
                 break  # Exit loop if request is found
             time.sleep(5)  # Wait before retrying
+
+        # If no match found, show the requests we were searching through
+        if not request_found:
+            self.log_info("=== No matching GA4 request found. All captured requests: ===")
+            for url in all_requests:
+                self.log_info(f"URL: {url}")
 
         self.log_assert(f"GA4 request found in HAR logs: {actual_request_url}", request_found, f"GA4 collect confirmation: no request found to {target_url}")
