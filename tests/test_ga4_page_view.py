@@ -1,3 +1,4 @@
+import time
 import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -78,6 +79,37 @@ def test_hire_now_form(setup_driver, test_url):
         
         data_layer = test_instance.get_data_layer(driver)
         test_instance.validate_page_view_event(data_layer)
+
+        # API Request Assertion
+        max_retries = 3
+
+        har_dict = proxy.har
+        target_url = "https://www.google-analytics.com/g/collect"
+        request_found = False
+        actual_request_url = None
+        all_requests = []
+
+        for attempt in range(max_retries):
+            test_instance.log_info(f"Checking HAR logs (Attempt {attempt+1}/{max_retries})...")
+
+            har_dict = proxy.har  # Get the latest network logs
+
+            for entry in har_dict['log']['entries']:
+                request = entry['request']
+                all_requests.append(request['url'])
+
+                if target_url in request['url'] and "en=page_view" in request['url']:
+                    actual_request_url = request['url']
+                    test_instance.log_info(f"Request sent to: {actual_request_url}")
+                    request_found = True
+                    break
+
+            if request_found:
+                break  # Exit loop if request is found
+            time.sleep(5)  # Wait before retrying
+
+        test_instance.log_assert(F"GA4 request found in HAR logs: {actual_request_url}", request_found, f"'GA4 collect confirmation: no request found to {target_url}")
+
 
     except AssertionError as e:
         test_instance.test_result = "fail"
