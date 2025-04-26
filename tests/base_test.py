@@ -3,6 +3,7 @@ import psutil
 import datetime
 import uuid
 import logging
+import urllib.parse
 from browsermobproxy import Server
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -156,77 +157,109 @@ class BaseTest:
         except:
             self.log_info(f"{self.metadata_string}|No cookie banner detected")
 
-    def validate_ga4_event(self, data_layer, event_name, expected_properties, check_user_ids=True):
-        """Generic method to validate GA4 events in the dataLayer
+    def validate_datalayer_event(self, data_layer, event_name, expected_properties, check_user_ids=True, max_retries=3):
+        """Generic method to validate datalayer events
         Args:
             data_layer: The dataLayer from the page
             event_name: Name of the GA4 event to validate (e.g. 'page_view', 'phone_click')
             expected_properties: Dictionary of expected key-value pairs in the event
             check_user_ids: Boolean indicating whether to check for user_id_ga and user_id_tealium
+            max_retries: Number of retries for checking dataLayer
         """
-        self.log_info(f"Validating GA4 {event_name} event...")
-        if not data_layer:
-            assert False, "DataLayer is empty"
-            
-        for entry in data_layer:
-            if isinstance(entry, list) and entry[0] == "event" and entry[1] == event_name:
-                data = entry[2]
-                passed = True
-                for k, v in expected_properties.items():
-                    self.log_assert(f"Checking dataLayer for {k}", k in data, f"Key '{k}' not found in dataLayer")
-                    self.log_assert(f"Checking dataLayer for {k}=={v}", data[k] == v, f"Value for '{k}' does not match expected value. Expected: {v}, Found: {data[k]}")
-
-                # Check user IDs if required
-                if check_user_ids:
-                    self.log_assert("Checking user_id_ga", data.get('user_id_ga') is not None, "user_id_ga not found in dataLayer.")
-                    self.log_assert("Checking user_id_tealium", data.get('user_id_tealium') is not None, "user_id_tealium not found in dataLayer.")
+        for attempt in range(max_retries):
+            self.log_info(f"Validating datalayer {event_name} event (Attempt {attempt+1}/{max_retries})...")
+            if not data_layer:
+                assert False, "DataLayer is empty"
                 
-                return passed
-        
-        assert False, f"GA4 {event_name} event not found in dataLayer"
+            for entry in data_layer:
+                if isinstance(entry, list) and entry[0] == "event" and entry[1] == event_name:
+                    data = entry[2]
+                    passed = True
+                    for k, v in expected_properties.items():
+                        self.log_assert(f"Checking dataLayer for {k}", k in data, f"Key '{k}' not found in dataLayer")
+                        self.log_assert(f"Checking dataLayer for {k}=={v}", data[k] == v, f"Value for '{k}' does not match expected value. Expected: {v}, Found: {data[k]}")
 
-    def validate_ga4_collect_event(self, proxy, event_name, max_retries=3):
+                    # Check user IDs if required
+                    if check_user_ids:
+                        self.log_assert("Checking user_id_ga", data.get('user_id_ga') is not None, "user_id_ga not found in dataLayer.")
+                        self.log_assert("Checking user_id_tealium", data.get('user_id_tealium') is not None, "user_id_tealium not found in dataLayer.")
+                    
+                    return passed
+
+            if attempt < max_retries - 1:
+                self.log_info(f"GA4 {event_name} event not found, retrying...")
+                time.sleep(5)
+            
+        assert False, f"GA4 {event_name} event not found in dataLayer after {max_retries} attempts"
+
+    def validate_ga4_collect_event(self, proxy, event_name, expected_properties, max_retries=5):
         """Generic method to validate GA4 collect network requests in HAR logs
         Args:
             proxy: The proxy instance from setup_driver
             event_name: Name of the GA4 event to validate (e.g. 'page_view', 'phone_click')
+            expected_properties: Dictionary of expected key-value pairs in the request URL
             max_retries: Number of retries for checking HAR logs
         """
         target_url = "https://www.google-analytics.com/g/collect"
         request_found = False
         actual_request_url = None
-        all_requests = []
-                    
-        # Debug logging for all requests
-        #self.log_info("=== All GA requests in HAR log ===")
-        #har_dict = proxy.har
-        #for entry in har_dict['log']['entries']:
-        #    request_url = entry['request']['url']
-        #    if request_url.startswith(target_url):
-        #        self.log_info(f"Request URL: {request_url}")
+        all_requests = []                    
 
-        for attempt in range(max_retries):
+        for attempt in range(max_retries):            
+            all_requests = [] 
             self.log_info(f"Checking HAR logs (Attempt {attempt+1}/{max_retries})...")
-            har_dict = proxy.har  # Get the latest network logs
+            
+            # Get fresh HAR logs and create new HAR
+            har_dict = proxy.har
+            proxy.new_har()  # Start fresh HAR capture
 
             for entry in har_dict['log']['entries']:
                 request = entry['request']
                 all_requests.append(request['url'])
 
-                if target_url in request['url'] and f"en={event_name}" in request['url']:
+                # Check both en= parameter and _ee parameter for events
+                if target_url in request['url'] and (
+                    f"en={event_name}" in request['url'] or 
+                    (f"_ee=1" in request['url'] and any(f"ep.{k}={v}" in request['url'] for k, v in expected_properties.items()))
+                ):
                     actual_request_url = request['url']
-                    self.log_info(f"Request sent to: {actual_request_url}")
-                    request_found = True
+                    self.log_info(f"GA4 request found: {actual_request_url}")
+                    request_found = True                    
                     break
 
             if request_found:
-                break  # Exit loop if request is found
-            time.sleep(5)  # Wait before retrying
+                break
+                
+            # Longer wait between retries
+            time.sleep(8)
 
-        # If no match found, show the requests we were searching through
+        # Log all captured requests if no match found
         if not request_found:
             self.log_info("=== No matching GA4 request found. All captured requests: ===")
             for url in all_requests:
-                self.log_info(f"URL: {url}")
+                if target_url in url:
+                    self.log_info(f"GA4 request: {url}")
+                elif "google-analytics" in url:
+                    self.log_info(f"Other analytics request: {url}")
 
         self.log_assert(f"GA4 request found in HAR logs: {actual_request_url}", request_found, f"GA4 collect confirmation: no request found to {target_url}")
+
+        # Validate expected parameters in the request URL
+        for param, expected_value in expected_properties.items():
+            full_param = f"ep.{param}"
+            param_exists = f"{full_param}=" in actual_request_url
+            self.log_assert(
+                f"Checking GA4 request for {full_param}",
+                param_exists,
+                f"Parameter '{full_param}' not found in GA4 request URL"
+            )
+            # Extract the actual value from the URL
+            parsed_url = urllib.parse.parse_qs(urllib.parse.urlparse(actual_request_url).query)
+            param_values = [v for k, v in parsed_url.items() if k.endswith(param)]
+            actual_value = param_values[0][0] if param_values else None
+            
+            self.log_assert(
+                f"Checking GA4 request for {full_param}=={expected_value}",
+                str(actual_value) == str(expected_value),
+                f"Value for '{full_param}' does not match expected value. Expected: {expected_value}, Found: {actual_value}"
+            )

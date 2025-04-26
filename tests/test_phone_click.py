@@ -66,10 +66,16 @@ def test_hire_now_form(setup_driver, test_url):
             "page_zone": "7i2dtn",
             "event_text": "phone number"
         }
-        test_instance.validate_ga4_event(data_layer, "phone_click", expected_properties)
+        test_instance.validate_datalayer_event(data_layer, "phone_click", expected_properties)
 
         # Validate GA4 collect request
-        test_instance.validate_ga4_collect_event(proxy, "phone_click")
+        expected_properties = {
+            "ep.page_topic": "lead form page",
+            "ep.page_user_type": "client",
+            "ep.page_zone": "7i2dtn",
+            "ep.event_text": "phone number"
+        }
+        test_instance.validate_ga4_collect_event(proxy, "phone_click", expected_properties)
 
     except AssertionError as e:
         test_instance.test_result = "fail"

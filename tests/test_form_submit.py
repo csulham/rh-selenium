@@ -1,3 +1,4 @@
+import time
 import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -108,18 +109,7 @@ def test_hire_now_form(setup_driver, test_url):
         filled_value = driver.execute_script(check_value_script)
         test_instance.log_assert("Remote checkbox checked?", filled_value, "Checkbox not checked")
 
-        # Submit button
-#        driver.execute_script("""
-#            const btn = document.querySelector("rhcl-button[component-title='Submit']");
-#            btn.scrollIntoView();
-#            btn.dispatchEvent(new MouseEvent('click', {
-#                bubbles: true,
-#                cancelable: true,
-#                view: window
-#            }));
-#        """)
-        #test_instance.log_info(f"{test_instance.metadata_string}|Submit button clicked")
-
+        # Get Submit button
         submit_button = driver.find_element(By.CSS_SELECTOR, "rhcl-button[component-title='Submit']")
         test_instance.log_assert("Submit button exists?", submit_button is not None, "Submit button not found")
         
@@ -143,11 +133,36 @@ def test_hire_now_form(setup_driver, test_url):
         success_message = driver.find_element(By.CSS_SELECTOR, "rhcl-typography[id='thankYouCopy']").text
         test_instance.log_assert("Success message displayed?", "Thank You" in success_message, f"Success message incorrect. Found: {success_message}")
 
-        # Validate GA4 collect request
+        # Validate the dataLayer event
+        data_layer = test_instance.get_data_layer(driver)
         expected_properties = {
+            "form_type": "job-order",
+            "event_action": "rhcl-button-clicked",
+            "page_topic": "lead form page",
+            "page_user_type": "client",
+            "page_zone": "7i2dtn",
+            "indicator_remote": "true",
+            "job_title": "quality assurance engineer",
+            "job_type": "temp",
+            "location": "99502",
+            "event_text": "submit"
+        }
+        test_instance.validate_datalayer_event(data_layer, "job_order_submit", expected_properties)
+
+        # Validate GA4 collect request        
+        expected_properties = {
+            "ep.form_type": "job-order",
+            "ep.event_action": "rhcl-button-clicked",
+            "ep.page_topic": "lead form page",
+            "ep.page_user_type": "client",
+            "ep.page_zone": "7i2dtn",
+            "ep.indicator_remote": "true",
+            "ep.job_title": "quality assurance engineer",
+            "ep.job_type": "temp",
+            "ep.location": "99502",
             "ep.event_text": "submit"
         }
-        test_instance.validate_ga4_collect_event(proxy, "button_click")
+        test_instance.validate_ga4_collect_event(proxy, "job_order_submit", expected_properties)
 
     except AssertionError as e:
         test_instance.test_result = "fail"
