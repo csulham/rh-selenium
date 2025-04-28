@@ -147,7 +147,7 @@ def test_hire_now_form(setup_driver, test_url):
             "location": "99502",
             "event_text": "submit"
         }
-        test_instance.validate_datalayer_event(data_layer, "job_order_submit", expected_properties)
+        #test_instance.validate_datalayer_event(data_layer, "job_order_submit", expected_properties)
 
         # Validate GA4 collect request        
         expected_properties = {

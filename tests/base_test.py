@@ -192,74 +192,59 @@ class BaseTest:
             
         assert False, f"GA4 {event_name} event not found in dataLayer after {max_retries} attempts"
 
-    def validate_ga4_collect_event(self, proxy, event_name, expected_properties, max_retries=5):
+    def validate_ga4_collect_event(self, proxy, event_name, expected_properties, max_retries=3):
         """Generic method to validate GA4 collect network requests in HAR logs
         Args:
             proxy: The proxy instance from setup_driver
             event_name: Name of the GA4 event to validate (e.g. 'page_view', 'phone_click')
-            expected_properties: Dictionary of expected key-value pairs in the request URL
             max_retries: Number of retries for checking HAR logs
         """
         target_url = "https://www.google-analytics.com/g/collect"
         request_found = False
         actual_request_url = None
-        all_requests = []                    
+        all_requests = []
 
-        for attempt in range(max_retries):            
-            all_requests = [] 
+        for attempt in range(max_retries):
             self.log_info(f"Checking HAR logs (Attempt {attempt+1}/{max_retries})...")
-            
-            # Get fresh HAR logs and create new HAR
-            har_dict = proxy.har
-            proxy.new_har()  # Start fresh HAR capture
+            har_dict = proxy.har  # Get the latest network logs
+            all_requests = []  # Reset all_requests for each attempt
 
             for entry in har_dict['log']['entries']:
                 request = entry['request']
                 all_requests.append(request['url'])
 
-                # Check both en= parameter and _ee parameter for events
-                if target_url in request['url'] and (
-                    f"en={event_name}" in request['url'] or 
-                    (f"_ee=1" in request['url'] and any(f"ep.{k}={v}" in request['url'] for k, v in expected_properties.items()))
-                ):
+                if target_url in request['url'] and f"en={event_name}" in request['url']:
                     actual_request_url = request['url']
-                    self.log_info(f"GA4 request found: {actual_request_url}")
-                    request_found = True                    
+                    self.log_info(f"Request sent to: {actual_request_url}")
+                    request_found = True
                     break
 
             if request_found:
-                break
-                
-            # Longer wait between retries
-            time.sleep(8)
+                break  # Exit loop if request is found
+            self.log_info("GA4 collect request not found, retrying...")
+            time.sleep(5)  # Wait before retrying
 
-        # Log all captured requests if no match found
+        # If no match found, show the requests we were searching through
         if not request_found:
             self.log_info("=== No matching GA4 request found. All captured requests: ===")
             for url in all_requests:
-                if target_url in url:
-                    self.log_info(f"GA4 request: {url}")
-                elif "google-analytics" in url:
-                    self.log_info(f"Other analytics request: {url}")
+                self.log_info(f"URL: {url}")
 
         self.log_assert(f"GA4 request found in HAR logs: {actual_request_url}", request_found, f"GA4 collect confirmation: no request found to {target_url}")
-
+        
         # Validate expected parameters in the request URL
         for param, expected_value in expected_properties.items():
-            full_param = f"ep.{param}"
-            param_exists = f"{full_param}=" in actual_request_url
+            param_exists = f"{param}=" in actual_request_url
             self.log_assert(
-                f"Checking GA4 request for {full_param}",
+                f"Checking GA4 request for {param}",
                 param_exists,
-                f"Parameter '{full_param}' not found in GA4 request URL"
+                f"Parameter '{param}' not found in GA4 request URL"
             )
             # Extract the actual value from the URL
-            parsed_url = urllib.parse.parse_qs(urllib.parse.urlparse(actual_request_url).query)
-            param_values = [v for k, v in parsed_url.items() if k.endswith(param)]
-            actual_value = param_values[0][0] if param_values else None
-            
+            actual_value = urllib.parse.parse_qs(urllib.parse.urlparse(actual_request_url).query).get(param, [None])[0]
             self.log_assert(
-                f"Checking GA4 request for {full_param}=={expected_value}",
-                str(actual_value) == str(expected_value),
-                f"Value for '{full_param}' does not match expected value. Expected: {expected_value}, Found: {actual_value}"
+                f"Checking GA4 request for {param}=={expected_value}",
+                actual_value == expected_value,
+                f"Value for '{param}' does not match expected value. Expected: {expected_value}, Found: {actual_value}"
             )
+            

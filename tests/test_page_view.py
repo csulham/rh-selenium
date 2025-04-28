@@ -12,7 +12,7 @@ class TestFormGA4(BaseTest):
     
     def setup_method(self, method):
         super().setup_method(method)
-        self.test_name = "test_ga4_page_view"
+        self.test_name = "test_page_view"
         self.test_id = 2
         
         # Metadata for domo
