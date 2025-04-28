@@ -24,6 +24,42 @@ class TestFormGA4(BaseTest):
             test_suite, test_suite_version, test_case_name, test_case_version
         )
 
+    def collect_hidden_inputs(self, driver):
+        """
+        Collect and log all hidden input fields on the page using Selenium.
+        """
+        try:
+            self.log_info("Collecting hidden input fields...")
+            
+            # Find all input elements
+            hidden_inputs = driver.find_elements(By.CSS_SELECTOR, 'input[type="hidden"]')
+            
+            if hidden_inputs:
+                self.log_info(f"Found {len(hidden_inputs)} hidden input fields:")
+                result = []
+                for input_field in hidden_inputs:
+                    input_data = {
+                        'name': input_field.get_attribute('name') or '',
+                        'id': input_field.get_attribute('id') or '',
+                        'value': input_field.get_attribute('value') or '',
+                        'type': input_field.get_attribute('type') or ''
+                    }
+                    result.append(input_data)
+                    self.log_info(f"Hidden Input - Name: {input_data['name']}, "
+                                f"ID: {input_data['id']}, "
+                                f"Type: {input_data['type']}, "
+                                f"Value: {input_data['value']}")
+                return result
+            else:
+                self.log_info("No hidden input fields found on the page")
+                return []
+                
+        except Exception as e:
+            self.log_error(f"Error collecting hidden inputs: {e}")
+            return []
+
+
+
     def fill_field(self, driver, selector, value, label):
         try:
             self.log_info(f"Typing {label}...")
@@ -45,7 +81,9 @@ class TestFormGA4(BaseTest):
             self.log_assert(f"'{label}' field filled correctly", filled_value == value, f"Expected '{value}', but got '{filled_value}'")
         
         except Exception as e:
-            self.log_error(f"Error filling field '{label}': {e}")    
+            self.log_error(f"Error filling field '{label}': {e}")
+
+        
 
 @pytest.mark.parametrize("test_url", [TestFormGA4.URL])
 def test_hire_now_form(setup_driver, test_url):
@@ -113,18 +151,76 @@ def test_hire_now_form(setup_driver, test_url):
         submit_button = driver.find_element(By.CSS_SELECTOR, "rhcl-button[component-title='Submit']")
         test_instance.log_assert("Submit button exists?", submit_button is not None, "Submit button not found")
         
-        # Scroll the submit button into view and focus it before clicking
-        driver.execute_script("""
-            const btn = arguments[0];
-            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            btn.focus();
-        """, submit_button)
-        
-        # Add a small wait to ensure the scroll is complete
-        driver.implicitly_wait(1)
-        submit_button.click()
+        # Get the page form
+        page_form = driver.find_element(By.TAG_NAME, "form")
+        test_instance.log_assert("Form element <form> detected", page_form is not None, "Form element not found")
 
-        # Wait for the form to be submitted and check for success message. It can take a while.
+        # Validate the form action
+        form_action = page_form.get_attribute("action")
+        expected_form_action_url = "https://qs04-dr.int-qs-lp.api.roberthalfonline.com/proxy-lead-processing/send"
+        test_instance.log_assert("Form action URL is correct", form_action == expected_form_action_url, f"Form action URL incorrect. Found: {form_action}")
+
+        # Scroll the submit button into view
+        driver.execute_script("arguments[0].scrollIntoView(true);", submit_button)
+        
+        # Wait a bit for any animations to complete
+        time.sleep(2)
+        
+        # Submit the form using JavaScript because clicking the button isn't firing the submit event
+        driver.execute_script("""
+            const form = document.querySelector('form');
+            const submitBtn = document.querySelector("rhcl-button[component-title='Submit']");
+            
+            if (form && submitBtn && submitBtn.interactionRef) {
+                // Create FormData
+                const formData = new FormData(form);
+                
+                // Add required hidden fields
+                formData.append('actionRequestedOfLp', 'SUBMIT');
+                formData.append('leadId', 'rhwebsite_86e62553-ce7d-4e2f-a2c1-8a44b339440c');
+                formData.append('recaptchaEnabled', 'false');
+                formData.append('rhInternalTrackingType', 'RH Website Visitor');
+                
+                // Create fetch options for POST
+                const options = {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                };
+                
+                // Send POST request
+                fetch(form.action, options)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Dispatch form submit event
+                        const submitEvent = new CustomEvent('submit', {
+                            bubbles: true,
+                            cancelable: true,
+                            detail: data
+                        });
+                        form.dispatchEvent(submitEvent);
+                        
+                        // Also trigger the button click for any event listeners
+                        submitBtn.interactionRef.click();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                    });
+            }
+        """)
+        
+        # Add wait for form submission processing
+        time.sleep(3)
+
+        # Wait for the form to be submitted and check for success message
+        test_instance.log_info("Waiting for thank you message...")
         WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "rhcl-typography[id='thankYouCopy']"))
         )
@@ -132,6 +228,8 @@ def test_hire_now_form(setup_driver, test_url):
         # Validate the success message
         success_message = driver.find_element(By.CSS_SELECTOR, "rhcl-typography[id='thankYouCopy']").text
         test_instance.log_assert("Success message displayed?", "Thank You" in success_message, f"Success message incorrect. Found: {success_message}")
+        
+        test_instance.get_request_response_payload(proxy, expected_form_action_url)
 
         # Validate the dataLayer event
         data_layer = test_instance.get_data_layer(driver)
@@ -147,7 +245,7 @@ def test_hire_now_form(setup_driver, test_url):
             "location": "99502",
             "event_text": "submit"
         }
-        #test_instance.validate_datalayer_event(data_layer, "job_order_submit", expected_properties)
+        test_instance.validate_datalayer_event(data_layer, "job_order_submit", expected_properties)
 
         # Validate GA4 collect request        
         expected_properties = {

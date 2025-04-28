@@ -37,7 +37,12 @@ def setup_browsermob():
         pytest.fail("BrowserMob Proxy failed to start.")
 
     proxy = server.create_proxy()
-    proxy.new_har()
+    # Configure proxy to capture all content types
+    proxy.new_har(options={
+        'captureHeaders': True,
+        'captureContent': True,
+        'captureBinaryContent': True
+    })
     
     yield server, proxy
     logging.info("Stopping BrowserMob Proxy...")
@@ -196,7 +201,8 @@ class BaseTest:
         """Generic method to validate GA4 collect network requests in HAR logs
         Args:
             proxy: The proxy instance from setup_driver
-            event_name: Name of the GA4 event to validate (e.g. 'page_view', 'phone_click')
+            event_name: Name of the GA4 event to validate (e.g. 'page_view', 'phone_click')            
+            expected_properties: Dictionary of expected key-value pairs in the request URL
             max_retries: Number of retries for checking HAR logs
         """
         target_url = "https://www.google-analytics.com/g/collect"
@@ -247,4 +253,62 @@ class BaseTest:
                 actual_value == expected_value,
                 f"Value for '{param}' does not match expected value. Expected: {expected_value}, Found: {actual_value}"
             )
+
+    def get_request_response_payload(self, proxy, url_path, max_retries=3):
+        """
+        Collect request and response payloads from HAR logs for a specific URL path.
+        
+        Args:
+            proxy: The BrowserMob proxy instance
+            url_path: The URL path to search for in the HAR logs
+            max_retries: Number of times to retry checking the HAR logs
             
+        Returns:
+            tuple: (request_payload, response_payload) if found, (None, None) if not found
+        """
+        for attempt in range(max_retries):
+            har = proxy.har
+            
+            if not har or 'log' not in har or 'entries' not in har['log']:
+                self.log_info(f"No HAR entries found, attempt {attempt + 1}/{max_retries}")
+                time.sleep(5)
+                continue
+                
+            for entry in har['log']['entries']:
+                request = entry.get('request', {})
+                response = entry.get('response', {})
+                
+                # Check if this is the request we're looking for
+                if url_path in request.get('url', ''):
+                    self.log_info(f"Found matching request to {url_path}")
+                    
+                    # Get request payload
+                    request_payload = None
+                    if 'postData' in request:
+                        request_payload = request['postData'].get('text') or request['postData'].get('params')
+                        self.log_info(f"Request payload for {url_path}: {request_payload}")
+                    
+                    # Get response payload
+                    response_payload = None
+                    if 'content' in response:
+                        response_payload = response['content'].get('text')
+                        if response_payload:
+                            import base64
+                            try:
+                                decoded = base64.b64decode(response_payload).decode('utf-8')
+                                self.log_info(f"Response payload for {url_path}: {decoded}")
+                            except Exception as e:
+                                self.log_info(f"Could not decode response payload: {e}")
+                                decoded = response_payload
+                        else:
+                            decoded = None
+                            self.log_info(f"No response payload content for {url_path}")
+                    
+                    return request_payload, decoded
+            
+            if attempt < max_retries - 1:
+                self.log_info(f"Request to {url_path} not found in HAR logs, retrying...")
+                time.sleep(5)
+        
+        self.log_info(f"No matching request found for {url_path} after {max_retries} attempts")
+        return None, None
