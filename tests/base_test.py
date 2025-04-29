@@ -28,7 +28,7 @@ def setup_browsermob():
             proc.kill()
 
     logging.info("Starting BrowserMob Proxy...")
-    server = Server(path="./drivers/browsermob-proxy-2.1.4/bin/browsermob-proxy")
+    server = Server(path="/drivers/browsermob-proxy-2.1.4/bin/browsermob-proxy")
     try:
         server.start()
         time.sleep(5)

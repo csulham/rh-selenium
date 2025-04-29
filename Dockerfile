@@ -85,9 +85,9 @@ ENV BROWSERMOB_PROXY_VERSION=2.1.4
 
 RUN wget https://github.com/lightbody/browsermob-proxy/releases/download/browsermob-proxy-${BROWSERMOB_PROXY_VERSION}/browsermob-proxy-${BROWSERMOB_PROXY_VERSION}-bin.zip && \
     unzip browsermob-proxy-${BROWSERMOB_PROXY_VERSION}-bin.zip && \
-    mkdir -p ./drivers && \
-    mv browsermob-proxy-${BROWSERMOB_PROXY_VERSION} ./drivers/ && \
-    chmod +x ./drivers/browsermob-proxy-${BROWSERMOB_PROXY_VERSION}/bin/browsermob-proxy && \
+    mkdir -p /drivers && \
+    mv browsermob-proxy-${BROWSERMOB_PROXY_VERSION} /drivers/ && \
+    chmod +x /drivers/browsermob-proxy-${BROWSERMOB_PROXY_VERSION}/bin/browsermob-proxy && \
     rm browsermob-proxy-${BROWSERMOB_PROXY_VERSION}-bin.zip && \
     apt-get purge -y --auto-remove wget unzip && \
     rm -rf /var/lib/apt/lists/*
