@@ -66,6 +66,7 @@ RUN apt-get update && \
     firefox-esr \
     libgtk-3-0 \
     libdbus-glib-1-2 \
+    libgbm1 \
     libxt6 && \
     rm -rf /var/lib/apt/lists/*
 
@@ -78,6 +79,24 @@ ENV GECKODRIVER_DIR=/usr/local/bin/
 RUN wget https://github.com/mozilla/geckodriver/releases/download/$GECKODRIVER_VERSION/geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz && \
     tar -xzf geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz -C $GECKODRIVER_DIR && \
     rm geckodriver-$GECKODRIVER_VERSION-linux64.tar.gz
+
+# Fetch the latest stable Chrome version and install Chrome and ChromeDriver
+RUN CHROME_VERSION=$(curl -sSL https://googlechromelabs.github.io/chrome-for-testing/ | awk -F 'Version:' '/Stable/ {print $2}' | awk '{print $1}' | sed 's/<code>//g; s/<\/code>//g') && \
+    CHROME_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" && \
+    echo "Fetching Chrome version: ${CHROME_VERSION}" && \
+    curl -sSL ${CHROME_URL} -o /tmp/chrome-linux64.zip && \
+    mkdir -p /opt/google/chrome && \
+    mkdir -p /usr/local/bin && \
+    unzip -q /tmp/chrome-linux64.zip -d /opt/google/chrome && \
+    rm /tmp/chrome-linux64.zip
+
+# Install ChromeDriver using the same ${CHROME_VERSION} as Chrome
+RUN CHROME_VERSION=$(curl -sSL https://googlechromelabs.github.io/chrome-for-testing/ | awk -F 'Version:' '/Stable/ {print $2}' | awk '{print $1}' | sed 's/<code>//g; s/<\/code>//g') && \
+    CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" && \
+    curl -sSL ${CHROMEDRIVER_URL} -o /tmp/chromedriver-linux64.zip && \
+    unzip -q /tmp/chromedriver-linux64.zip -d /usr/local/bin && \
+    chmod +x /usr/local/bin && \
+    rm /tmp/chromedriver-linux64.zip
 
 RUN geckodriver --version
 
