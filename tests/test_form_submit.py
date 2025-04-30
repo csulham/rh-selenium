@@ -116,7 +116,7 @@ def test_hire_now_form(setup_driver, test_url):
             ("rhcl-textarea[name='additionalInfo']", "Test message", "Comments"),
             ("rhcl-text-field[name='firstName']", "Jes", "First Name"),
             ("rhcl-text-field[name='lastName']", "Carney", "Last Name"),
-            ("rhcl-text-field[name='phoneNumber']", "1234567890", "Phone Number"),
+            ("rhcl-text-field[name='phoneNumber']", "6174403840", "Phone Number"),
             ("rhcl-text-field[name='email']", "jes@example.com", "Email"),
             ("rhcl-text-field[name='companyName']", "Robert Half", "Company Name"),
             ("rhcl-text-field[name='customerTitle']", "Director", "Customer Title")
@@ -164,60 +164,51 @@ def test_hire_now_form(setup_driver, test_url):
         driver.execute_script("arguments[0].scrollIntoView(true);", submit_button)
         
         # Wait a bit for any animations to complete
-        time.sleep(2)
+        time.sleep(1)
         
         # Submit the form using JavaScript because clicking the button isn't firing the submit event
-        driver.execute_script("""
-            const form = document.querySelector('form');
-            const submitBtn = document.querySelector("rhcl-button[component-title='Submit']");
+        submit_button.click()
+
+        # Check for validation errors
+        test_instance.log_info("Checking for validation errors...")
+        validation_errors = driver.execute_script("""
+            // Select all relevant form field elements
+            const formFields = document.querySelectorAll('rhcl-text-field, rhcl-checkbox, rhcl-typeahead, rhcl-textarea, rhcl-dropdown');
+            let errors = [];
             
-            if (form && submitBtn && submitBtn.interactionRef) {
-                // Create FormData
-                const formData = new FormData(form);
-                
-                // Add required hidden fields
-                formData.append('actionRequestedOfLp', 'SUBMIT');
-                formData.append('leadId', 'rhwebsite_86e62553-ce7d-4e2f-a2c1-8a44b339440c');
-                formData.append('recaptchaEnabled', 'false');
-                formData.append('rhInternalTrackingType', 'RH Website Visitor');
-                
-                // Create fetch options for POST
-                const options = {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                };
-                
-                // Send POST request
-                fetch(form.action, options)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        // Dispatch form submit event
-                        const submitEvent = new CustomEvent('submit', {
-                            bubbles: true,
-                            cancelable: true,
-                            detail: data
+            for (const field of formFields) {
+                if (field.shadowRoot) {
+                    const shadowErrors = field.shadowRoot.querySelectorAll('rhcl-form-field-error');
+                    for (const error of shadowErrors) {
+                        errors.push({
+                            field: field.getAttribute('name'),
+                            tagName: field.tagName.toLowerCase(),
+                            outerHTML: error.outerHTML,
+                            innerHTML: error.innerHTML,
+                            textContent: error.textContent,
+                            shadowContent: error.shadowRoot ? error.shadowRoot.innerHTML : null
                         });
-                        form.dispatchEvent(submitEvent);
-                        
-                        // Also trigger the button click for any event listeners
-                        submitBtn.interactionRef.click();
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                    });
+                    }
+                }
             }
+            
+            return errors;
         """)
+
+        test_instance.log_info(f"Found {len(validation_errors)} validation errors")
         
-        # Add wait for form submission processing
-        time.sleep(3)
+        # Log detailed information about each validation error
+        if validation_errors:
+            for error in validation_errors:
+                test_instance.log_info("Validation Error Details:")
+                test_instance.log_info(f"Field: {error['field']}")
+                test_instance.log_info(f"Full HTML: {error['outerHTML']}")
+                test_instance.log_info(f"Inner HTML: {error['innerHTML']}")
+                test_instance.log_info(f"Text Content: {error['textContent']}")
+                test_instance.log_info(f"Shadow Content: {error['shadowContent']}")
+                test_instance.log_info("---")
+            
+        test_instance.log_assert("No validation errors", len(validation_errors) == 0, "Validation errors found")
 
         # Wait for the form to be submitted and check for success message
         test_instance.log_info("Waiting for thank you message...")
@@ -229,6 +220,9 @@ def test_hire_now_form(setup_driver, test_url):
         success_message = driver.find_element(By.CSS_SELECTOR, "rhcl-typography[id='thankYouCopy']").text
         test_instance.log_assert("Success message displayed?", "Thank You" in success_message, f"Success message incorrect. Found: {success_message}")
         
+        # Add wait for form submission processing
+        time.sleep(15)
+
         test_instance.get_request_response_payload(proxy, expected_form_action_url)
 
         # Validate the dataLayer event
