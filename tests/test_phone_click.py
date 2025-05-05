@@ -45,13 +45,13 @@ def test_hire_now_form(setup_driver, test_url):
         form_shadow_root = form_root.shadow_root
         test_instance.log_assert("Shadow root detected", form_shadow_root is not None, "Shadow root not found")
 
-        phone_button = form_shadow_root.find_element(By.CSS_SELECTOR, "rhcl-button[component-title='1.855.432.0924']")
+        phone_button = form_shadow_root.find_element(By.CSS_SELECTOR, "rhcl-button[class='rhcl-block-hero-form__form--heading-container--button hydrated']")
         test_instance.log_assert("Phone button detected", phone_button is not None, "Phone button not found")
 
         # Navigate the phone button shadow dom and click the phone button
         phone_button_shadow_root = phone_button.shadow_root
         test_instance.log_assert("Phone button shadow root detected", phone_button_shadow_root is not None, "Phone button shadow root not found")
-        phone_link = phone_button_shadow_root.find_element(By.CSS_SELECTOR, "a[href='tel:1.855.432.0924']")
+        phone_link = phone_button_shadow_root.find_element(By.CSS_SELECTOR, "a")
         test_instance.log_assert("Phone link detected", phone_link is not None, "Phone link not found") 
         phone_link.click()
         test_instance.log_info(f"{test_instance.metadata_string}| Phone link clicked")
